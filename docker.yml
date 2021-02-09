@@ -1,0 +1,64 @@
+- hosts: "localhost"
+  vars_prompt:
+          - name: "os_name"
+            prompt: "enter the containers name"
+            private: no
+  tasks:
+          - name: "configuring the docker"
+            yum_repository:
+                    file: docker
+                    baseurl: "https://download.docker.com/linux/centos/7/x86_64/stable/"
+                    gpgcheck: no
+                    name: docker
+                    description: "repository for docker configuration"
+          - name: "installing the docker"
+            package:
+                    name: "docker-ce-18.09.1-3.el7.x86_64"
+                    state: present
+          - name: "installing docker sdk for python3"
+            command: "pip3 install docker-py" 
+          - name: "starting docker services"
+            service:
+                    name: "docker"
+                    state: started
+                    enabled: yes
+          - name: "launching a container"
+            community.general.docker_container:
+                    name: "{{ os_name }}"
+                    image: "sshcentos"
+                    state: started
+                    detach: yes
+                    interactive: yes
+                    tty: yes
+                    exposed_ports:
+                            - 80
+                    ports:
+                            - 8082:80
+          - name: " collecting docker information"
+            docker_container_info:
+                    name: "{{ os_name }}"
+            register: docker_info
+          - debug:
+                    var: docker_info['container']['NetworkSettings']['IPAddress']
+          - name: "updating the inventory"
+            lineinfile:
+                    state: present
+                    path: "/root/hosts/myhost"
+                    insertafter: "[docker]"
+                    line: "{{ docker_info['container']['NetworkSettings']['IPAddress'] }} ansible_user=root ansible_ssh_pass=docker ansible_connection=ssh"
+
+          - name: "refreshing the inventory"
+            meta: "refresh_inventory" 
+- hosts: [docker]
+  tasks: 
+          - name: "installing the httpd inside container"
+            package:
+                    name: "httpd"
+                    state: present
+          - name: "copying the content inside the document root"
+            copy:
+                    content: "welcome to the test"
+                    dest: /var/www/html/test.html
+          - name: "starting the service of httpd"
+            shell: /usr/sbin/httpd
+
